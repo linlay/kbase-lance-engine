@@ -1,0 +1,28 @@
+# Rust build and profiling artifacts
+/target/
+*.profraw
+*.profdata
+*.pdb
+**/*.rs.bk
+
+# Generated release artifacts and coverage output
+/dist/
+/coverage/
+/llvm-cov-target/
+
+# Local secrets and developer configuration
+.env
+.env.*
+!.env.example
+
+# Editor state
+/.idea/
+/.vscode/
+*.swp
+*.swo
+*~
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+Desktop.ini
