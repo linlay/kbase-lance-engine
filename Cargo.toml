@@ -1,6 +1,7 @@
 [package]
 name = "kbase-lance-engine"
-version = "1.0.0"
+version = "0.1.0"
+build = "build.rs"
 description = "Loopback LanceDB sidecar for the Agent Platform KBASE runtime"
 repository = "https://github.com/linlay/kbase-lance-engine"
 readme = "README.md"

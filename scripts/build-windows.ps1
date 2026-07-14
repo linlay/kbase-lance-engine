@@ -58,15 +58,15 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "cargo test failed" }
     }
 
-    $releaseArguments = @(
-        "-TargetOS", "windows",
-        "-TargetArch", $TargetArch
-    )
+    $releaseArguments = @{
+        TargetOS = "windows"
+        TargetArch = $TargetArch
+    }
     if ($OutputDir) {
-        $releaseArguments += @("-OutputDir", $OutputDir)
+        $releaseArguments.OutputDir = $OutputDir
     }
     if ($CargoTargetDir) {
-        $releaseArguments += @("-CargoTargetDir", $CargoTargetDir)
+        $releaseArguments.CargoTargetDir = $CargoTargetDir
     }
 
     & (Join-Path $PSScriptRoot "build-release.ps1") @releaseArguments

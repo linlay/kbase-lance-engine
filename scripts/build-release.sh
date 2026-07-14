@@ -3,7 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-VERSION="$(sed -nE 's/^version = "([^"]+)"/\1/p' "$REPO_ROOT/Cargo.toml" | head -n 1)"
+VERSION_FILE="$REPO_ROOT/VERSION"
+VERSION=""
 OUTPUT_ROOT="$REPO_ROOT/dist"
 TARGET_OS=""
 TARGET_ARCH=""
@@ -20,7 +21,7 @@ Usage: scripts/build-release.sh --os darwin|linux|windows --arch amd64|arm64 [op
 
 Builds one verified, versioned sidecar archive. Cross-compilation never installs
 toolchains; invoke this on a runner that already has the requested Rust target
-and linker/SDK.
+and linker/SDK. The release version is read from VERSION.
 
 Options:
   --output DIR      Release artifact root (default: dist)
@@ -52,7 +53,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -n "$VERSION" ]] || die "package version is missing from Cargo.toml"
+[[ -f "$VERSION_FILE" ]] || die "VERSION file not found: $VERSION_FILE"
+VERSION="$(<"$VERSION_FILE")"
+[[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]] || \
+  die "invalid VERSION value: $VERSION (expected a git tag style version such as v1.0.0)"
 [[ -n "$TARGET_OS" && -n "$TARGET_ARCH" ]] || { usage >&2; exit 2; }
 command -v cargo >/dev/null 2>&1 || die "cargo is required"
 command -v rustup >/dev/null 2>&1 || die "rustup is required"
@@ -88,15 +92,16 @@ command -v syft >/dev/null 2>&1 || die "Syft is required to create a release art
 syft "$stage_dir/$binary_name" -o "cyclonedx-json=$stage_dir/sbom.cdx.json"
 cp "$REPO_ROOT/LICENSE-APACHE-2.0" "$stage_dir/LICENSE-APACHE-2.0"
 cp "$REPO_ROOT/NOTICE" "$stage_dir/NOTICE"
+cp "$VERSION_FILE" "$stage_dir/VERSION"
 
-artifact_dir="$OUTPUT_ROOT/v$VERSION"
+artifact_dir="$OUTPUT_ROOT/$VERSION"
 mkdir -p "$artifact_dir"
-archive="$artifact_dir/kbase-lance-engine_v${VERSION}_${TARGET_OS}_${TARGET_ARCH}.${archive_format}"
+archive="$artifact_dir/kbase-lance-engine_${VERSION}_${TARGET_OS}_${TARGET_ARCH}.${archive_format}"
 rm -f "$archive" "$archive.sha256"
 if [[ "$archive_format" == tar.gz ]]; then
-  tar -czf "$archive" -C "$stage_dir" "$binary_name" cargo-metadata.json sbom.cdx.json LICENSE-APACHE-2.0 NOTICE
+  tar -czf "$archive" -C "$stage_dir" "$binary_name" cargo-metadata.json sbom.cdx.json LICENSE-APACHE-2.0 NOTICE VERSION
 else
-  (cd "$stage_dir" && zip -q "$archive" "$binary_name" cargo-metadata.json sbom.cdx.json LICENSE-APACHE-2.0 NOTICE)
+  (cd "$stage_dir" && zip -q "$archive" "$binary_name" cargo-metadata.json sbom.cdx.json LICENSE-APACHE-2.0 NOTICE VERSION)
 fi
 if command -v sha256sum >/dev/null 2>&1; then
   sha256sum "$archive" | awk -v name="$(basename "$archive")" '{print $1 "  " name}' >"$archive.sha256"

@@ -15,6 +15,14 @@ $SCRIPT_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
 $REPO_ROOT = Split-Path -Parent $SCRIPT_DIR
 if (-not $OutputDir) { $OutputDir = Join-Path $REPO_ROOT "dist" }
 if (-not $CargoTargetDir) { $CargoTargetDir = Join-Path $REPO_ROOT "target" }
+$versionFile = Join-Path $REPO_ROOT "VERSION"
+if (-not (Test-Path -LiteralPath $versionFile -PathType Leaf)) {
+    throw "VERSION file not found: $versionFile"
+}
+$version = (Get-Content -LiteralPath $versionFile -Raw).TrimEnd("`r", "`n")
+if ($version -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$') {
+    throw "Invalid VERSION value: $version (expected a git tag style version such as v1.0.0)"
+}
 
 $triples = @{
     "darwin/amd64" = "x86_64-apple-darwin"
@@ -37,8 +45,6 @@ if ($LASTEXITCODE -ne 0 -or $installed -notcontains $triple) {
     throw "Rust target $triple is not installed; provision it on the release runner"
 }
 
-$version = (Select-String -Path (Join-Path $REPO_ROOT "Cargo.toml") -Pattern '^version = "([^"]+)"' | Select-Object -First 1).Matches[0].Groups[1].Value
-if (-not $version) { throw "Package version is missing from Cargo.toml" }
 $binaryName = if ($TargetOS -eq "windows") { "kbase-lance-engine.exe" } else { "kbase-lance-engine" }
 
 New-Item -ItemType Directory -Path $CargoTargetDir -Force | Out-Null
@@ -58,10 +64,11 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Syft failed" }
     Copy-Item (Join-Path $REPO_ROOT "LICENSE-APACHE-2.0") $stage
     Copy-Item (Join-Path $REPO_ROOT "NOTICE") $stage
+    Copy-Item $versionFile $stage
 
-    $artifactDir = Join-Path $OutputDir "v$version"
+    $artifactDir = Join-Path $OutputDir $version
     New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
-    $archive = Join-Path $artifactDir "kbase-lance-engine_v${version}_${TargetOS}_${TargetArch}.zip"
+    $archive = Join-Path $artifactDir "kbase-lance-engine_${version}_${TargetOS}_${TargetArch}.zip"
     Remove-Item $archive -Force -ErrorAction SilentlyContinue
     Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $archive -CompressionLevel Optimal
     $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()

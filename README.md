@@ -43,7 +43,7 @@ The first line written to standard output is the ready handshake. The actual
 address is useful when the default ephemeral port is used:
 
 ```json
-{"protocolVersion":1,"engineVersion":"1.0.0","lancedbVersion":"0.30.0","listenAddress":"127.0.0.1:54321"}
+{"protocolVersion":1,"engineVersion":"0.1.0","lancedbVersion":"0.30.0","listenAddress":"127.0.0.1:54321"}
 ```
 
 In a second terminal, verify the process with the same token:
@@ -143,9 +143,11 @@ runner, and `-SkipTests` only when the caller has already run the checks. Pass
 `-OutputDir` or `-CargoTargetDir` to select artifact and reusable Cargo-cache
 locations.
 
-Each command writes a versioned archive to `dist/v<version>/`. Archives contain
-the executable, `cargo-metadata.json`, `sbom.cdx.json`, `LICENSE-APACHE-2.0`,
-and `NOTICE`, followed by a SHA-256 checksum file. The optional
+The Git-tracked [`VERSION`](VERSION) file is the release-version source of
+truth. Set it to a Git-tag-style value such as `v0.1.0` before building. Each
+command writes its versioned archive to `dist/<VERSION>/`. Archives contain the
+executable, `cargo-metadata.json`, `sbom.cdx.json`, `LICENSE-APACHE-2.0`,
+`NOTICE`, and `VERSION`, followed by a SHA-256 checksum file. The optional
 `--cargo-target-dir <dir>` or `-CargoTargetDir <dir>` setting selects a reusable
 Cargo compilation cache; it is never a release artifact and must not be
 committed.
