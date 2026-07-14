@@ -369,9 +369,9 @@ fn parent_process_alive(pid: u32) -> bool {
 fn parent_process_alive(pid: u32) -> bool {
     use windows_sys::Win32::{
         Foundation::{CloseHandle, WAIT_TIMEOUT},
-        System::Threading::{OpenProcess, SYNCHRONIZE, WaitForSingleObject},
+        System::Threading::{OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject},
     };
-    let handle = unsafe { OpenProcess(SYNCHRONIZE, 0, pid) };
+    let handle = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, 0, pid) };
     if handle.is_null() {
         return false;
     }
