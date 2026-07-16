@@ -18,6 +18,10 @@ fn default_read_limit() -> i32 {
     200
 }
 
+fn default_file_embeddings_limit() -> usize {
+    1024
+}
+
 fn default_rrf_k() -> usize {
     60
 }
@@ -340,6 +344,38 @@ pub struct ReadPathResponse {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct FileEmbeddingsRequest {
+    #[serde(flatten)]
+    pub base: BaseRequest,
+    pub file_id: String,
+    #[serde(default)]
+    pub offset: usize,
+    #[serde(default = "default_file_embeddings_limit")]
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileEmbeddingItem {
+    pub ordinal: i32,
+    pub content_hash: String,
+    pub embedding_model: String,
+    pub embedding_dimension: i32,
+    pub vector: Vec<f32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileEmbeddingsResponse {
+    pub request_id: String,
+    pub generation_id: String,
+    pub items: Vec<FileEmbeddingItem>,
+    pub next_offset: usize,
+    pub has_more: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BuildIndexesRequest {
     #[serde(flatten)]
     pub base: BaseRequest,
@@ -359,6 +395,22 @@ pub struct BuildIndexesResponse {
     pub vector_index_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ann_recall_at_10: Option<f32>,
+    pub indexes: Vec<IndexInfo>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefreshIndexesRequest {
+    #[serde(flatten)]
+    pub base: BaseRequest,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefreshIndexesResponse {
+    pub request_id: String,
+    pub generation_id: String,
+    pub table_version: u64,
     pub indexes: Vec<IndexInfo>,
 }
 

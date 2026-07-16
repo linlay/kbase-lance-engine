@@ -534,6 +534,60 @@ impl Engine {
         })
     }
 
+    pub async fn file_embeddings(
+        &self,
+        request: FileEmbeddingsRequest,
+    ) -> EngineResult<FileEmbeddingsResponse> {
+        if request.file_id.trim().is_empty() {
+            return Err(EngineError::invalid("fileId is required"));
+        }
+        if request.limit == 0 || request.limit > 5000 {
+            return Err(EngineError::invalid("limit must be between 1 and 5000"));
+        }
+        let generation = self.generation(&request.base).await?;
+        let stream = generation
+            .table
+            .query()
+            .only_if(format!("file_id = '{}'", sql_literal(&request.file_id)))
+            .select(Select::columns(&[
+                "ordinal",
+                "content_hash",
+                "embedding_model",
+                "embedding_dimension",
+                "vector",
+            ]))
+            .execute()
+            .await
+            .map_err(EngineError::from_lance)?;
+        let batches = stream
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(EngineError::from_lance)?;
+        let mut items = Vec::new();
+        for batch in batches {
+            for row in 0..batch.num_rows() {
+                items.push(FileEmbeddingItem {
+                    ordinal: int32_value(&batch, "ordinal", row)?,
+                    content_hash: string_value(&batch, "content_hash", row)?,
+                    embedding_model: string_value(&batch, "embedding_model", row)?,
+                    embedding_dimension: int32_value(&batch, "embedding_dimension", row)?,
+                    vector: vector_value(&batch, "vector", row)?,
+                });
+            }
+        }
+        items.sort_by(|left, right| left.ordinal.cmp(&right.ordinal));
+        let start = request.offset.min(items.len());
+        let end = start.saturating_add(request.limit).min(items.len());
+        let has_more = end < items.len();
+        Ok(FileEmbeddingsResponse {
+            request_id: request.base.request_id,
+            generation_id: request.base.generation_id,
+            items: items.drain(start..end).collect(),
+            next_offset: end,
+            has_more,
+        })
+    }
+
     pub async fn build_indexes(
         &self,
         request: BuildIndexesRequest,
@@ -632,6 +686,29 @@ impl Engine {
             row_count,
             vector_index_type: vector_index_type.to_owned(),
             ann_recall_at_10,
+            indexes: index_info(&generation.table).await?,
+        })
+    }
+
+    pub async fn refresh_indexes(
+        &self,
+        request: RefreshIndexesRequest,
+    ) -> EngineResult<RefreshIndexesResponse> {
+        let generation = self.generation(&request.base).await?;
+        let _guard = generation.write_lock.lock().await;
+        generation
+            .table
+            .optimize(OptimizeAction::Index(OptimizeOptions::append()))
+            .await
+            .map_err(EngineError::from_lance)?;
+        Ok(RefreshIndexesResponse {
+            request_id: request.base.request_id,
+            generation_id: request.base.generation_id,
+            table_version: generation
+                .table
+                .version()
+                .await
+                .map_err(EngineError::from_lance)?,
             indexes: index_info(&generation.table).await?,
         })
     }
@@ -1892,6 +1969,40 @@ mod tests {
         assert_eq!(read.chunks.len(), 1);
         assert_eq!(read.chunks[0].chunk_id, "c3");
 
+        // Default vector/FTS queries include unindexed rows, so an incremental
+        // file replacement is searchable before index maintenance runs.
+        let updated_search: SearchRequest = serde_json::from_value(serde_json::json!({
+            "requestId": "search-updated",
+            "agentKey": "agent-1",
+            "generationId": "generation_1",
+            "query": "updated local knowledge",
+            "vector": [1.0, 0.0],
+            "limit": 2
+        }))
+        .unwrap();
+        let updated_result = engine.search(updated_search).await.unwrap();
+        assert_eq!(updated_result.matches.first().unwrap().chunk.chunk_id, "c3");
+
+        let embeddings = engine
+            .file_embeddings(FileEmbeddingsRequest {
+                base: base_request(),
+                file_id: "f1".to_owned(),
+                offset: 0,
+                limit: 100,
+            })
+            .await
+            .unwrap();
+        assert_eq!(embeddings.items.len(), 1);
+        assert_eq!(embeddings.items[0].vector, vec![1.0, 0.0]);
+
+        let refreshed = engine
+            .refresh_indexes(RefreshIndexesRequest {
+                base: base_request(),
+            })
+            .await
+            .unwrap();
+        assert!(!refreshed.indexes.is_empty());
+
         let deleted = engine
             .delete_file(DeleteFileRequest {
                 base: base_request(),
@@ -1900,6 +2011,22 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(deleted.deleted_rows, 1);
+        let deleted_search: SearchRequest = serde_json::from_value(serde_json::json!({
+            "requestId": "search-deleted",
+            "agentKey": "agent-1",
+            "generationId": "generation_1",
+            "query": "remote search",
+            "vector": [0.0, 1.0],
+            "limit": 2
+        }))
+        .unwrap();
+        let deleted_result = engine.search(deleted_search).await.unwrap();
+        assert!(
+            deleted_result
+                .matches
+                .iter()
+                .all(|item| item.chunk.file_id != "f2")
+        );
 
         let release = || ReleaseGenerationRequest {
             base: base_request(),

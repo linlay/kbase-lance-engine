@@ -7,7 +7,7 @@ pub use server::{AppState, build_router, run};
 
 pub const ENGINE_VERSION: &str = env!("KBASE_LANCE_ENGINE_VERSION");
 pub const LANCEDB_VERSION: &str = "0.30.0";
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 
 #[cfg(test)]
 mod tests {

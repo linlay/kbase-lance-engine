@@ -75,8 +75,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/v1/generations/import", post(import_chunks))
         .route("/v1/generations/validate", post(validate_generation))
         .route("/v1/indexes/build", post(build_indexes))
+        .route("/v1/indexes/refresh", post(refresh_indexes))
         .route("/v1/chunks/replace-file", post(replace_file))
         .route("/v1/chunks/delete-file", post(delete_file))
+        .route("/v1/chunks/file-embeddings", post(file_embeddings))
         .route("/v1/search", post(search))
         .route("/v1/read/chunk", post(read_chunk))
         .route("/v1/read/path", post(read_path))
@@ -274,12 +276,28 @@ async fn read_path(
     Ok(Json(state.engine.read_path(request).await?))
 }
 
+async fn file_embeddings(
+    State(state): State<AppState>,
+    body: Bytes,
+) -> EngineResult<Json<FileEmbeddingsResponse>> {
+    let request = parse_json(&body)?;
+    Ok(Json(state.engine.file_embeddings(request).await?))
+}
+
 async fn build_indexes(
     State(state): State<AppState>,
     body: Bytes,
 ) -> EngineResult<Json<BuildIndexesResponse>> {
     let request = parse_json(&body)?;
     Ok(Json(state.engine.build_indexes(request).await?))
+}
+
+async fn refresh_indexes(
+    State(state): State<AppState>,
+    body: Bytes,
+) -> EngineResult<Json<RefreshIndexesResponse>> {
+    let request = parse_json(&body)?;
+    Ok(Json(state.engine.refresh_indexes(request).await?))
 }
 
 async fn validate_generation(

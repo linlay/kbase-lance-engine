@@ -43,7 +43,7 @@ The first line written to standard output is the ready handshake. The actual
 address is useful when the default ephemeral port is used:
 
 ```json
-{"protocolVersion":1,"engineVersion":"0.1.0","lancedbVersion":"0.30.0","listenAddress":"127.0.0.1:54321"}
+{"protocolVersion":2,"engineVersion":"2.0.0","lancedbVersion":"0.30.0","listenAddress":"127.0.0.1:54321"}
 ```
 
 In a second terminal, verify the process with the same token:
@@ -85,9 +85,14 @@ or underscores.
 | --- | --- |
 | Health | `GET /v1/health` |
 | Generation lifecycle | `POST /v1/generations/create`, `/release`, `/import`, `/validate` |
-| Chunks | `POST /v1/chunks/replace-file`, `/delete-file` |
+| Chunks | `POST /v1/chunks/replace-file`, `/delete-file`, `/file-embeddings` |
 | Search and reads | `POST /v1/search`, `/read/chunk`, `/read/path` |
-| Maintenance | `POST /v1/indexes/build`, `/stats`, `/optimize`, `/shutdown` |
+| Maintenance | `POST /v1/indexes/build`, `/indexes/refresh`, `/stats`, `/optimize`, `/shutdown` |
+
+Protocol v2 adds paged file-embedding reads for chunk-vector reuse and
+`/v1/indexes/refresh`, which appends delta indexes without replacing the
+existing FTS or vector indexes. These endpoints remain private to the Go
+runtime and require the same loopback and bearer-token protections.
 
 `/v1/generations/import` and `/v1/chunks/replace-file` accept JSON by default.
 They also accept Arrow IPC streams with
