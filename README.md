@@ -161,3 +161,11 @@ committed.
 
 Licensed under the [Apache License 2.0](LICENSE-APACHE-2.0). See [NOTICE](NOTICE)
 for release attribution information.
+
+### 可复现发布打包
+
+发布打包需要 Python 3（Unix 命令 `python3`，Windows 命令 `python`）。
+`scripts/reproducible-package.py` 固定归档顺序、时间、权限和压缩头，保留文件内容与符号链接；
+sidecar 额外规范 Cargo 本机路径和 SBOM 可变元数据，保留依赖与许可证事实。
+复验必须使用相同源码、依赖、目标平台、编译器、Python/zlib 和 Syft 版本；不保证跨工具链逐字节相同。
+历史已发布归档不能重新打包覆盖。

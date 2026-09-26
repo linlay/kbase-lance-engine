@@ -35,7 +35,7 @@ $triples = @{
 $triple = $triples["$TargetOS/$TargetArch"]
 if (-not $triple) { throw "Unsupported target $TargetOS/$TargetArch" }
 
-foreach ($command in @("cargo", "rustup", "protoc", "syft")) {
+foreach ($command in @("cargo", "rustup", "protoc", "syft", "python")) {
     if (-not (Get-Command $command -ErrorAction SilentlyContinue)) {
         throw "$command is required to build a sidecar release artifact"
     }
@@ -48,7 +48,7 @@ if ($LASTEXITCODE -ne 0 -or $installed -notcontains $triple) {
 $binaryName = if ($TargetOS -eq "windows") { "kbase-lance-engine.exe" } else { "kbase-lance-engine" }
 
 New-Item -ItemType Directory -Path $CargoTargetDir -Force | Out-Null
-& cargo build --manifest-path (Join-Path $REPO_ROOT "Cargo.toml") --release --locked --target $triple --target-dir $CargoTargetDir
+& cargo rustc --bin kbase-lance-engine --manifest-path (Join-Path $REPO_ROOT "Cargo.toml") --release --locked --target $triple --target-dir $CargoTargetDir -- "--remap-path-prefix=$REPO_ROOT=/src/kbase-lance-engine"
 if ($LASTEXITCODE -ne 0) { throw "cargo build failed for $TargetOS/$TargetArch" }
 $binary = Join-Path $CargoTargetDir "$triple/release/$binaryName"
 if (-not (Test-Path $binary -PathType Leaf)) { throw "Cargo completed but binary is missing: $binary" }
@@ -60,8 +60,14 @@ try {
     $metadata = & cargo metadata --manifest-path (Join-Path $REPO_ROOT "Cargo.toml") --locked --format-version 1
     if ($LASTEXITCODE -ne 0) { throw "cargo metadata failed" }
     [IO.File]::WriteAllText((Join-Path $stage "cargo-metadata.json"), ($metadata -join "`n"), [Text.UTF8Encoding]::new($false))
-    & syft $binary -o "cyclonedx-json=$(Join-Path $stage 'sbom.cdx.json')"
-    if ($LASTEXITCODE -ne 0) { throw "Syft failed" }
+    $oldSyftUpdate = $env:SYFT_CHECK_FOR_APP_UPDATE
+    try {
+        $env:SYFT_CHECK_FOR_APP_UPDATE = "false"
+        & syft $binary -o "cyclonedx-json=$(Join-Path $stage 'sbom.cdx.json')"
+        if ($LASTEXITCODE -ne 0) { throw "Syft failed" }
+    } finally {
+        if ($null -eq $oldSyftUpdate) { Remove-Item Env:SYFT_CHECK_FOR_APP_UPDATE -ErrorAction SilentlyContinue } else { $env:SYFT_CHECK_FOR_APP_UPDATE = $oldSyftUpdate }
+    }
     Copy-Item (Join-Path $REPO_ROOT "LICENSE-APACHE-2.0") $stage
     Copy-Item (Join-Path $REPO_ROOT "NOTICE") $stage
     Copy-Item $versionFile $stage
@@ -70,7 +76,8 @@ try {
     New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
     $archive = Join-Path $artifactDir "kbase-lance-engine_${version}_${TargetOS}_${TargetArch}.zip"
     Remove-Item $archive -Force -ErrorAction SilentlyContinue
-    Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $archive -CompressionLevel Optimal
+    & python (Join-Path $SCRIPT_DIR "reproducible-package.py") --stage $stage --output $archive --sidecar-root $REPO_ROOT --cargo-target $CargoTargetDir
+    if ($LASTEXITCODE -ne 0) { throw "Deterministic packaging failed" }
     $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
     [IO.File]::WriteAllText("$archive.sha256", "$hash  $(Split-Path $archive -Leaf)`n", [Text.UTF8Encoding]::new($false))
     Write-Host "[kbase-lance-release] artifact: $archive"
